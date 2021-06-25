@@ -1,0 +1,51 @@
+version: 1.0.{build}-beta
+image: <%= @configs['image'] %>
+
+skip_branch_with_pr: true
+
+init:
+- ps: |-
+    if ($env:APPVEYOR_REPO_TAG -eq "true")
+    {
+        Update-AppveyorBuild -Version "$env:APPVEYOR_REPO_TAG_NAME"
+    }
+configuration: Release
+dotnet_csproj:
+  patch: true
+  file: '**\*.csproj'
+  version: '{version}'
+  package_version: '{version}'
+  assembly_version: '{version}'
+  file_version: '{version}'
+  informational_version: '{version}'
+install:
+  - ps: (new-object Net.WebClient).DownloadString("https://raw.github.com/madskristensen/ExtensionScripts/master/AppVeyor/vsix.ps1") | iex
+before_build:
+  - cmd: nuget restore
+  - cmd: dotnet restore
+  - ps: Vsix-IncrementVsixVersion | Vsix-UpdateBuildVersion
+build_script: 
+  - msbuild <%= @metadata[:module_name] %>.sln /p:configuration=Release /p:DeployExtension=false /p:ZipPackageCompressionLevel=normal /v:m
+  - dotnet test --no-restore --no-build
+artifacts:
+  - path: <%= @metadata[:module_name] %>\<%= @metadata[:module_name] %>.Vsix\bin\Release\*\<%= @metadata[:module_name] %>.Vsix.vsix
+    name: <%= @metadata[:module_name] %>.vsix
+  - path: <%= @metadata[:module_name] %>\<%= @metadata[:module_name] %>.Package\bin\Release\<%= @metadata[:module_name] %>.*.nupkg
+    name: <%= @metadata[:module_name] %>.nupkg
+deploy:
+  - provider: NuGet
+    api_key:
+      secure: 8v7kxS3JrrBgMLXNM8wnl4JAkAnqW3R9D4eVnqND9RsXNYGStmoDRo6ZWguydPWS
+    skip_symbols: false
+    symbol_server:           # remove to push symbols to SymbolSource.org
+    artifact: /.*(\.|\.s)(nupkg)/
+    on:
+      appveyor_repo_tag: true        # deploy only on tag push
+  - provider: GitHub
+    description: Automatically created by AppVeyor.
+    auth_token:
+      secure: s39ckGvRShV6HXhGpbmkpl/XnRUjNQ7NweZBEj4EQ+uzn/cB0LbS4b8/kekJtaKE
+    artifact: /.*(\.|\.s)(nupkg|vsix)/
+    draft: true
+    on:
+      appveyor_repo_tag: true        # deploy only on tag push
